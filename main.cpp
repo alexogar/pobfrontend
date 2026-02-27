@@ -3,7 +3,10 @@
 #include <QFontDatabase>
 #include <QKeyEvent>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDesktopWidget>
+#include <QDir>
+#include <QMessageBox>
 #include <QtGui/QGuiApplication>
 #include <QPaintDevice>
 
@@ -24,6 +27,44 @@ int dscount;
 POBWindow *pobwindow;
 
 QRegularExpression colourCodes{R"((\^x.{6})|(\^\d))"};
+
+static bool g_luaFatalError = false;
+
+static int luaPcallWithTraceback(int nargs, int nresults)
+{
+    int base = lua_gettop(L) - nargs; // function index
+    lua_getfield(L, LUA_REGISTRYINDEX, "traceback");
+    if (lua_isfunction(L, -1)) {
+        lua_insert(L, base);
+        int status = lua_pcall(L, nargs, nresults, base);
+        lua_remove(L, base);
+        return status;
+    }
+    lua_pop(L, 1);
+    return lua_pcall(L, nargs, nresults, 0);
+}
+
+static void quitAfterLuaError(const char* context, int luaStatus)
+{
+    const char* err = lua_tostring(L, -1);
+    QString message = QString("%1 (status %2)\n%3")
+        .arg(context)
+        .arg(luaStatus)
+        .arg(err ? err : "(non-string Lua error)");
+
+    std::cerr << message.toStdString() << std::endl;
+
+    // Pop error object from stack (lua_pcall/luaL_dofile leave it there).
+    lua_pop(L, 1);
+
+    if (!g_luaFatalError) {
+        g_luaFatalError = true;
+        if (!isatty(STDERR_FILENO)) {
+            QMessageBox::critical(nullptr, "Path of Building", message);
+        }
+        QCoreApplication::exit(1);
+    }
+}
 
 void pushCallback(const char* name) {
     lua_getfield(L, LUA_REGISTRYINDEX, "uicallbacks");
@@ -63,6 +104,9 @@ void POBWindow::resizeGL(int w, int h) {
 }
 
 void POBWindow::paintGL() {
+    if (g_luaFatalError) {
+        return;
+    }
     isDrawing = true;
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     glColor4f(0, 0, 0, 0);
@@ -75,9 +119,11 @@ void POBWindow::paintGL() {
     curSubLayer = 0;
 
     pushCallback("OnFrame");
-    int result = lua_pcall(L, 1, 0, 0);
+    int result = luaPcallWithTraceback(1, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnFrame", result);
+        isDrawing = false;
+        return;
     }
 
     if (dscount > pobwindow->stringCache.maxCost()) {
@@ -129,35 +175,50 @@ void pushMouseString(QMouseEvent *event) {
 }
 
 void POBWindow::mousePressEvent(QMouseEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyDown");
     pushMouseString(event);
     lua_pushboolean(L, false);
-    int result = lua_pcall(L, 3, 0, 0);
+    int result = luaPcallWithTraceback(3, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyDown (mouse press)", result);
+        return;
     }
 }
 
 void POBWindow::mouseReleaseEvent(QMouseEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyUp");
     pushMouseString(event);
-    int result = lua_pcall(L, 2, 0, 0);
+    int result = luaPcallWithTraceback(2, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyUp (mouse release)", result);
+        return;
     }
 }
 
 void POBWindow::mouseDoubleClickEvent(QMouseEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyDown");
     pushMouseString(event);
     lua_pushboolean(L, true);
-    int result = lua_pcall(L, 3, 0, 0);
+    int result = luaPcallWithTraceback(3, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyDown (mouse double click)", result);
+        return;
     }
 }
 
 void POBWindow::wheelEvent(QWheelEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyUp");
     if (event->angleDelta().y() > 0) {
         lua_pushstring(L, "WHEELUP");
@@ -167,9 +228,10 @@ void POBWindow::wheelEvent(QWheelEvent *event) {
         return;
     }
     lua_pushboolean(L, false);
-    int result = lua_pcall(L, 3, 0, 0);
+    int result = luaPcallWithTraceback(3, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyUp (wheel)", result);
+        return;
     }
 }
 
@@ -225,6 +287,9 @@ bool pushKeyString(int keycode) {
 }
 
 void POBWindow::keyPressEvent(QKeyEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyDown");
     if (!pushKeyString(event->key())) {
         if (event->key() >= ' ' && event->key() <= '~') {
@@ -246,21 +311,26 @@ void POBWindow::keyPressEvent(QKeyEvent *event) {
         }
     }
     lua_pushboolean(L, false);
-    int result = lua_pcall(L, 3, 0, 0);
+    int result = luaPcallWithTraceback(3, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyDown (key press)", result);
+        return;
     }
 }
 
 void POBWindow::keyReleaseEvent(QKeyEvent *event) {
+    if (g_luaFatalError) {
+        return;
+    }
     pushCallback("OnKeyUp");
     if (!pushKeyString(event->key())) {
         lua_pushstring(L, "ASDF");
         //std::cout << "UNHANDLED KEYUP" << std::endl;
     }
-    int result = lua_pcall(L, 2, 0, 0);
+    int result = luaPcallWithTraceback(2, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnKeyUp (key release)", result);
+        return;
     }
 }
 
@@ -495,7 +565,13 @@ static int l_imgHandleLoad(lua_State* L)
         }
     }
     imgHandle->img = new QImage();
-    imgHandle->img->load(fullFileName);
+    bool ok = imgHandle->img->load(fullFileName);
+    if (!ok || imgHandle->img->isNull()) {
+        // Prevent Qt from warning when we later create a texture from the image.
+        // Missing images should render as a transparent 1x1 pixel.
+        *imgHandle->img = QImage(1, 1, QImage::Format_ARGB32);
+        imgHandle->img->fill(QColor(0, 0, 0, 0));
+    }
     imgHandle->img->setText("fname", fullFileName);
     //imgHandle->hnd = new QOpenGLTexture(img);
     //pobwindow->renderer->RegisterShader(fullFileName, flags);
@@ -799,19 +875,28 @@ DrawStringCmd::DrawStringCmd(float X, float Y, int Align, int Size, int Font, co
         tex = *pobwindow->stringCache[cacheKey];
     } else {
         QString fontName;
+        bool italic = false;
         switch (Font) {
-        case 1:
-            fontName = "Liberation Sans";
-            break;
-        case 2:
+        case 2: // VAR BOLD
             fontName = "Liberation Sans Bold";
             break;
-        case 0:
+        case 5: // FONTIN ITALIC
+            italic = true;
+            [[fallthrough]];
+        case 1: // VAR
+        case 3: // FONTIN
+        case 4: // FONTIN SC
+            fontName = "Liberation Sans";
+            break;
+        case 0: // FIXED
         default:
             fontName = "Bitstream Vera Sans Mono";
             break;
         }
         QFont font(fontName);
+        if (italic) {
+            font.setItalic(true);
+        }
         font.setPixelSize(Size + pobwindow->fontFudge);
         QFontMetrics fm(font);
         QSize size = fm.size(0, text);
@@ -882,7 +967,7 @@ static int l_DrawString(lua_State* L)
     pobwindow->LAssert(L, lua_isstring(L, 5), "DrawString() argument 5: expected string, got %t", 5);
     pobwindow->LAssert(L, lua_isstring(L, 6), "DrawString() argument 6: expected string, got %t", 6);
     static const char* alignMap[6] = { "LEFT", "CENTER", "RIGHT", "CENTER_X", "RIGHT_X", nullptr };
-    static const char* fontMap[4] = { "FIXED", "VAR", "VAR BOLD", nullptr };
+    static const char* fontMap[7] = { "FIXED", "VAR", "VAR BOLD", "FONTIN", "FONTIN SC", "FONTIN ITALIC", nullptr };
     pobwindow->AppendCmd(std::make_unique<DrawStringCmd>(
         (float)lua_tonumber(L, 1), (float)lua_tonumber(L, 2), luaL_checkoption(L, 3, "LEFT", alignMap), 
         (int)lua_tointeger(L, 4), luaL_checkoption(L, 5, "FIXED", fontMap), lua_tostring(L, 6)
@@ -900,9 +985,14 @@ static int l_DrawStringWidth(lua_State* L)
     int fontsize = lua_tointeger(L, 1);
     QString fontName = lua_tostring(L, 2);
     QString fontKey = "0";
-    if (fontName == "VAR") {
+    bool italic = false;
+    if (fontName == "VAR" || fontName == "FONTIN" || fontName == "FONTIN SC") {
         fontName = "Liberation Sans";
         fontKey = "1";
+    } else if (fontName == "FONTIN ITALIC") {
+        fontName = "Liberation Sans";
+        fontKey = "1i";
+        italic = true;
     } else if (fontName == "VAR BOLD") {
         fontName = "Liberation Sans Bold";
         fontKey = "2";
@@ -920,6 +1010,9 @@ static int l_DrawStringWidth(lua_State* L)
     }
 
     QFont font(fontName);
+    if (italic) {
+        font.setItalic(true);
+    }
     font.setPixelSize(fontsize + pobwindow->fontFudge);
     QFontMetrics fm(font);
     lua_pushinteger(L, fm.size(0, text).width());
@@ -938,8 +1031,12 @@ static int l_DrawStringCursorIndex(lua_State* L)
 
     int fontsize = lua_tointeger(L, 1);
     QString fontName = lua_tostring(L, 2);
-    if (fontName == "VAR") {
+    bool italic = false;
+    if (fontName == "VAR" || fontName == "FONTIN" || fontName == "FONTIN SC") {
         fontName = "Liberation Sans";
+    } else if (fontName == "FONTIN ITALIC") {
+        fontName = "Liberation Sans";
+        italic = true;
     } else if (fontName == "VAR BOLD") {
         fontName = "Liberation Sans Bold";
     } else {
@@ -951,6 +1048,9 @@ static int l_DrawStringCursorIndex(lua_State* L)
 
     QStringList texts = text.split("\n");
     QFont font(fontName);
+    if (italic) {
+        font.setItalic(true);
+    }
     font.setPixelSize(fontsize + pobwindow->fontFudge);
     QFontMetrics fm(font);
     int curX = lua_tointeger(L, 4);
@@ -1614,7 +1714,11 @@ int main(int argc, char **argv)
     qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
 #endif //__APPLE__
     
-    QGuiApplication app{argc, argv};
+    QApplication app{argc, argv};
+
+    // Ensure runtime assets (Lua, data files) are resolved relative to the
+    // executable directory inside the app bundle.
+    QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     QStringList args = app.arguments();
 
@@ -1631,6 +1735,18 @@ int main(int argc, char **argv)
 
     L = luaL_newstate();
     luaL_openlibs(L);
+
+    // Provide a traceback function for PCall() and host-initiated Lua calls.
+    lua_getglobal(L, "debug");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "traceback");
+        if (lua_isfunction(L, -1)) {
+            lua_setfield(L, LUA_REGISTRYINDEX, "traceback");
+        } else {
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
     luaJIT_setmode(L, 0, LUAJIT_MODE_ENGINE|LUAJIT_MODE_OFF);
 
     // Callbacks
@@ -1756,13 +1872,15 @@ int main(int argc, char **argv)
 
     int result = luaL_dofile(L, "Launch.lua");
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error while running Launch.lua", result);
+        return 1;
     }
 
     pushCallback("OnInit");
-    result = lua_pcall(L, 1, 0, 0);
+    result = luaPcallWithTraceback(1, 0);
     if (result != 0) {
-        lua_error(L);
+        quitAfterLuaError("Lua error in OnInit", result);
+        return 1;
     }
     pobwindow->resize(800, 600);
     pobwindow->show();

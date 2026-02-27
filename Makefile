@@ -32,7 +32,7 @@ all: frontend pob
 	ninja install; \
 	popd; \
 	macdeployqt ${DIR}/PathOfBuilding.app; \
-	cp ${DIR}/Info.plist.sh ${DIR}/PathOfBuilding.app/Contents/Info.plist; \
+	codesign --force --deep --sign - ${DIR}/PathOfBuilding.app; \
 	echo 'Finished'
 
 pob: load_pob luacurl frontend

@@ -33,4 +33,7 @@ rmdir lua
 cp ../lcurl.so .
 cp ../lua-utf8.so .
 mv src/* .
+# Remove tests/spec from the shipped bundle; they aren't needed at runtime and
+# dotted directories like spec/TestBuilds/3.13 confuse codesign.
+rm -rf spec tests
 rmdir src
