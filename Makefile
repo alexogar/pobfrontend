@@ -1,5 +1,19 @@
 DIR := ${CURDIR}
-export PATH := /usr/local/opt/qt@5/bin:$(PATH)
+ARCH_PREFIX ?=
+BREW ?= brew
+LUAROCKS ?= luarocks
+LUAROCKS_TREE ?= ${DIR}/.luarocks
+
+export ARCH_PREFIX
+export BREW
+
+# Prefer whichever Qt5 prefix exists on this machine.
+# - Apple Silicon Homebrew: /opt/homebrew/opt/qt@5
+# - Intel Homebrew:        /usr/local/opt/qt@5
+QT5_OPT_PREFIX ?= $(firstword $(wildcard /opt/homebrew/opt/qt@5) $(wildcard /usr/local/opt/qt@5))
+QT5_OPT_PREFIX := $(or $(QT5_OPT_PREFIX),/usr/local/opt/qt@5)
+
+export PATH := ${QT5_OPT_PREFIX}/bin:$(PATH)
 # Some users on old versions of MacOS 10.13 run into the error:
 # dyld: cannot load 'PathOfBuilding' (load command 0x80000034 is unknown)
 #
@@ -9,9 +23,9 @@ export PATH := /usr/local/opt/qt@5/bin:$(PATH)
 #
 # For compatibility, we disable that using the flag from this thread:
 # https://github.com/python/cpython/issues/97524
-export LDFLAGS := -L/usr/local/opt/qt@5/lib -Wl,-no_fixup_chains
-export CPPFLAGS := -I/usr/local/opt/qt@5/include
-export PKG_CONFIG_PATH := /usr/local/opt/qt@5/lib/pkgconfig
+export LDFLAGS := -L${QT5_OPT_PREFIX}/lib -Wl,-no_fixup_chains
+export CPPFLAGS := -I${QT5_OPT_PREFIX}/include
+export PKG_CONFIG_PATH := ${QT5_OPT_PREFIX}/lib/pkgconfig
 
 all: frontend pob
 	pushd build; \
@@ -29,7 +43,7 @@ pob: load_pob luacurl frontend
 	popd
 
 frontend:
-	arch=x86_64 meson -Dbuildtype=release --prefix=${DIR}/PathOfBuilding.app --bindir=Contents/MacOS build
+	${ARCH_PREFIX} meson -Dbuildtype=release --prefix=${DIR}/PathOfBuilding.app --bindir=Contents/MacOS build
 
 # We checkout the latest version.
 load_pob:
@@ -49,9 +63,9 @@ luacurl:
 # curl is used since mesonInstaller.sh copies over the shared library dylib
 # dylibbundler is used to copy over dylibs that lcurl.so uses
 tools:
-	arch --x86_64 brew install qt@5 luajit zlib meson curl dylibbundler gcc@12 luarocks; \
-	sudo luarocks install luautf8 --lua-version 5.1; \
-	cp ~/.luarocks/lib/lua/5.1/lua-utf8.so .
+	${ARCH_PREFIX} ${BREW} install qt@5 luajit zlib meson curl dylibbundler gcc@12 luarocks; \
+	${ARCH_PREFIX} ${LUAROCKS} install luautf8 --lua-version 5.1 --tree=${LUAROCKS_TREE}; \
+	cp ${LUAROCKS_TREE}/lib/lua/5.1/lua-utf8.so ${DIR}/lua-utf8.so
 
 # We don't usually modify the PathOfBuilding directory, so there's rarely a
 # need to delete it. We separate it out to a separate task.

@@ -1,0 +1,37 @@
+commands = {}
+dependencies = {
+   luautf8 = {
+      ["0.2.1-1"] = {
+         {
+            constraints = {
+               {
+                  op = ">=",
+                  version = {
+                     5, 1, string = "5.1"
+                  }
+               }
+            },
+            name = "lua"
+         }
+      }
+   }
+}
+modules = {
+   ["lua-utf8"] = {
+      "luautf8/0.2.1-1"
+   }
+}
+repository = {
+   luautf8 = {
+      ["0.2.1-1"] = {
+         {
+            arch = "installed",
+            commands = {},
+            dependencies = {},
+            modules = {
+               ["lua-utf8"] = "lua-utf8.so"
+            }
+         }
+      }
+   }
+}

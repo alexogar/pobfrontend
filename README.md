@@ -6,6 +6,14 @@ A cross-platform [Path of Building](https://github.com/Openarl/PathOfBuilding) d
 Building
 --------
 
+### Steps to build on Apple Silicon (arm64)
+
+If you're using the default Apple Silicon Homebrew prefix (`/opt/homebrew`), you can install dependencies with:
+
+```sh
+make tools
+```
+
 ### Steps to build an x86_64 binary on M1 Macs
 
 Before starting, you need to install Homebrew for x86_64.
@@ -29,10 +37,10 @@ vim /usr/local/Homebrew/Library/Homebrew/brew.sh
 # HOMEBREW_MACOS_VERSION="12.0.0"
 
 # Run this only once after installing Homebrew to install dependencies
-make tools
+ARCH_PREFIX="arch -x86_64" BREW=/usr/local/bin/brew make tools
 
 # Build the entire app
-export PATH="/usr/local/opt/qt@5/bin:$PATH"
+export PATH="$(brew --prefix qt@5)/bin:$PATH"
 make
 
 # Optionally sign it for distribution
