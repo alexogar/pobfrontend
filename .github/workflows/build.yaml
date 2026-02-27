@@ -12,7 +12,7 @@ on:
 jobs:
   build:
 
-    runs-on: macos-13
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -22,7 +22,6 @@ jobs:
       - run: make
       - run: zip -r PathOfBuilding.zip PathOfBuilding.app
 
-      # Based on https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-output-parameter
       - id: get-version
         run: |
           version=$(sed -n 's/^.*number="\([0-9.]*\)".*$/\1/p' PathOfBuilding/manifest.xml)
