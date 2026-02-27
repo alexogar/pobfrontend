@@ -4,10 +4,15 @@ pushd Lua-cURLv3
 # We only replace `lua` with `luajit` once
 sed -i '' 's/?= lua$/?= luajit/' Makefile
 # We use pkg-config to find the right path for curl libraries
-sed -i '' 's@shell .* --libs libcurl@shell PKG_CONFIG_PATH=$$(arch --x86_64 brew --prefix --installed curl)/lib/pkgconfig $(PKG_CONFIG) --libs libcurl@' Makefile
-# We use the Homebrew installed GCC and build for x86_64 to ensure we build the
-# x86_64 library, even on ARM systems
-sed -i '' 's@?= \$(MAC_ENV) gcc$@ = \$(MAC_ENV) arch=x86_64 gcc-12@' Makefile
+BREW_BIN="${BREW:-brew}"
+if [[ -n "${ARCH_PREFIX}" ]]; then
+  BREW_PREFIX_CMD="${ARCH_PREFIX} ${BREW_BIN}"
+else
+  BREW_PREFIX_CMD="${BREW_BIN}"
+fi
+sed -i '' "s@shell .* --libs libcurl@shell PKG_CONFIG_PATH=\$\$(${BREW_PREFIX_CMD} --prefix --installed curl)/lib/pkgconfig \$(PKG_CONFIG) --libs libcurl@" Makefile
+# Prefer Homebrew's gcc-12 when available (installed by `make tools`).
+sed -i '' 's@?= \$(MAC_ENV) gcc$@?= \$(MAC_ENV) gcc-12@' Makefile
 # We target only MacOS 10.8 or later; otherwise, we get an error. We get an
 # error for targeting <10.5 and a warning for <10.8
 sed -i '' "s@MACOSX_DEPLOYMENT_TARGET='10.3'@MACOSX_DEPLOYMENT_TARGET='10.8'@" Makefile
