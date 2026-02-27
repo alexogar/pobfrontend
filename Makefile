@@ -47,13 +47,13 @@ frontend:
 
 # We checkout the latest version.
 load_pob:
-	git clone https://github.com/PathOfBuildingCommunity/PathOfBuilding.git; \
+	[ -d PathOfBuilding ] || git clone https://github.com/PathOfBuildingCommunity/PathOfBuilding.git; \
 	pushd PathOfBuilding; \
 	git fetch; \
 	popd
 
 luacurl:
-	git clone --depth 1 https://github.com/Lua-cURL/Lua-cURLv3.git; \
+	[ -d Lua-cURLv3 ] || git clone --depth 1 https://github.com/Lua-cURL/Lua-cURLv3.git; \
 	bash editLuaCurlMakefile.sh; \
     pushd Lua-cURLv3; \
 	make; \

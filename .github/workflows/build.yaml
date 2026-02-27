@@ -1,5 +1,8 @@
 name: build
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ "master" ]
@@ -12,15 +15,19 @@ on:
 jobs:
   build:
 
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
-      - uses: actions/checkout@v3
-      - run: brew install make ninja
+      - uses: actions/checkout@v4
+      - run: brew install ninja pkg-config
       - run: make tools
       - run: make clean
       - run: make
-      - run: zip -r PathOfBuilding.zip PathOfBuilding.app
+      - name: Verify arm64 binary
+        run: |
+          uname -m
+          file PathOfBuilding.app/Contents/MacOS/PathOfBuilding
+      - run: zip -rq PathOfBuilding.zip PathOfBuilding.app
 
       - id: get-version
         run: |
