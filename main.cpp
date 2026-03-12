@@ -881,6 +881,7 @@ DrawStringCmd::DrawStringCmd(float X, float Y, int Align, int Size, int Font, co
             fontName = "Liberation Sans Bold";
             break;
         case 5: // FONTIN ITALIC
+        case 6: // FONTIN SC ITALIC
             italic = true;
             [[fallthrough]];
         case 1: // VAR
@@ -967,7 +968,7 @@ static int l_DrawString(lua_State* L)
     pobwindow->LAssert(L, lua_isstring(L, 5), "DrawString() argument 5: expected string, got %t", 5);
     pobwindow->LAssert(L, lua_isstring(L, 6), "DrawString() argument 6: expected string, got %t", 6);
     static const char* alignMap[6] = { "LEFT", "CENTER", "RIGHT", "CENTER_X", "RIGHT_X", nullptr };
-    static const char* fontMap[7] = { "FIXED", "VAR", "VAR BOLD", "FONTIN", "FONTIN SC", "FONTIN ITALIC", nullptr };
+    static const char* fontMap[8] = { "FIXED", "VAR", "VAR BOLD", "FONTIN", "FONTIN SC", "FONTIN ITALIC", "FONTIN SC ITALIC", nullptr };
     pobwindow->AppendCmd(std::make_unique<DrawStringCmd>(
         (float)lua_tonumber(L, 1), (float)lua_tonumber(L, 2), luaL_checkoption(L, 3, "LEFT", alignMap), 
         (int)lua_tointeger(L, 4), luaL_checkoption(L, 5, "FIXED", fontMap), lua_tostring(L, 6)
@@ -989,7 +990,7 @@ static int l_DrawStringWidth(lua_State* L)
     if (fontName == "VAR" || fontName == "FONTIN" || fontName == "FONTIN SC") {
         fontName = "Liberation Sans";
         fontKey = "1";
-    } else if (fontName == "FONTIN ITALIC") {
+    } else if (fontName == "FONTIN ITALIC" || fontName == "FONTIN SC ITALIC") {
         fontName = "Liberation Sans";
         fontKey = "1i";
         italic = true;
@@ -1034,7 +1035,7 @@ static int l_DrawStringCursorIndex(lua_State* L)
     bool italic = false;
     if (fontName == "VAR" || fontName == "FONTIN" || fontName == "FONTIN SC") {
         fontName = "Liberation Sans";
-    } else if (fontName == "FONTIN ITALIC") {
+    } else if (fontName == "FONTIN ITALIC" || fontName == "FONTIN SC ITALIC") {
         fontName = "Liberation Sans";
         italic = true;
     } else if (fontName == "VAR BOLD") {
